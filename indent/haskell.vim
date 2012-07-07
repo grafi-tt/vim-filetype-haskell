@@ -31,9 +31,6 @@ if exists('b:did_indent')
   finish
 endif
 
-
-
-
 setlocal autoindent
 setlocal indentexpr=GetHaskellIndent()
 setlocal indentkeys=!^F,o,O,=where,0<Bar>
@@ -55,55 +52,79 @@ let b:undo_indent = 'setlocal '.join([
 
 
 function! GetHaskellIndent()
-  let n0 = v:lnum
-  let n1 = v:lnum - 1
-  let l0 = getline(n0)
-  let l1 = getline(n1)
+  let thisLineNum = v:lnum
+  let previousLineNum = v:lnum - 1
+  let thisLine = getline(thisLineNum)
+  let previousLine = getline(previousLineNum)
 
-    " NB: l0 may have trailing characters.  For example: iloveyou<Left><Return>
-  let at_new_line_p = (col('.') - 1) == matchend(l0, '^\s*')
-  if at_new_line_p
+    " NB: thisLine may have trailing characters.  For example: iloveyou<Left><Return>
+  let atNewLine = (col('.') - 1) == matchend(thisLine, '^\s*')
+  if atNewLine
     " Case: 'class' statement
     "   class Monad m where<*>
     "   ##<|>
-    if l1 =~# '\v^\s*<class>.*<where>'
-      return indent(n1) + &l:shiftwidth
+    if previousLine =~# '\v^\s*<class>.*<where>'
+      return indent(previousLineNum) + &l:shiftwidth
     endif
 
     " Case: 'instance' statement
     "   instance Eq Foo where<*>
     "   ##<|>
-    if l1 =~# '\v^\s*<instance>.*<where>'
-      return indent(n1) + &l:shiftwidth
+    if previousLine =~# '\v^\s*<instance>.*<where>'
+      return indent(previousLineNum) + &l:shiftwidth
     endif
 
     " Case: 'do' notation (1)
     "   f a b = do<*>
     "   ##<|>
-    if l1 =~# '\v^\s*.{-}<do>\s*(--.*)?$'
-      return indent(n1) + &l:shiftwidth
+    if previousLine =~# '\v^\s*.{-}<do>\s*(--.*)?$'
+      return indent(previousLineNum) + &l:shiftwidth
     endif
 
     " Case: 'do' notation (2)
     "   f a b = do g a<*>
     "   ###########<|>
-    let xs = matchlist(l1, '\v^(\s*.{-}<do>\s*)\S')
+    let xs = matchlist(previousLine, '\v^(\s*.{-}<do>\s*)\S')
     if xs != []
       return len(xs[1])
+    endif
+
+    " Case: open curly bracket not closed on this line
+    let R = '\v^.*\zs\{[^}]*$'
+    let x = match(previousLine, R)
+    if x != -1
+      b:startIndent
+      return x
+    endif
+
+    " Case: open paren not closed on this line
+    let R = '\v^.*\zs\([^)]*$'
+    let x = match(previousLine, R)
+    if x != -1
+      b:startIndent
+      return x
+    endif
+
+    " Case: open square bracket not closed on this line
+    let R = '\v^.*\zs\[[^\]]*$'
+    let x = match(previousLine, R)
+    if x != -1
+      b:startIndent
+      return x
     endif
 
     " Case: Function definition (1)
     "   f a b =<*>
     "   ##<|>
-    if l1 =~# '\v^\s*<\S.*\s+\=\s*(--.*)?$'
-      return indent(n1) + &l:shiftwidth
+    if previousLine =~# '\v^\s*<\S.*\s+\=\s*(--.*)?$'
+      return indent(previousLineNum) + &l:shiftwidth
     endif
 
     " Case: Function definition (2)
     "   f a b = g a >>=<*>
     "   ########<|>
     let R = '\v^(.{-}\s+\=\s+)\S.{-}[^A-Za-z0-9_"'')}\]]\s*(--.*)?$'
-    let xs = matchlist(l1, R)
+    let xs = matchlist(previousLine, R)
     if xs != []
       return len(xs[1])
     endif
@@ -112,8 +133,8 @@ function! GetHaskellIndent()
     "   foo = bar . baz
     "   ##where<*>
     "   ####<|>
-    if l1 =~# '\v^\s*<where>\s*(--.*)?$'
-      return indent(n1) + &l:shiftwidth
+    if previousLine =~# '\v^\s*<where>\s*(--.*)?$'
+      return indent(previousLineNum) + &l:shiftwidth
     endif
 
     " Otherwise: Keep the previous indentation level.
@@ -122,15 +143,15 @@ function! GetHaskellIndent()
     " Case: 'where' clause (1)
     "   foo = bar . baz
     "   ##where<*><|>
-    if l0 =~# '\v^\s*<where>'
-      return indent(prevnonblank(n1)) + &l:shiftwidth
+    if thisLine =~# '\v^\s*<where>'
+      return indent(prevnonblank(previousLineNum)) + &l:shiftwidth
     endif
 
     " Case: Guards (1)
     "   f a b
     "   ##|<*><|>
-    if l0 =~# '\v^\s*\|'
-      let np = prevnonblank(n1)
+    if thisLine =~# '\v^\s*\|'
+      let np = prevnonblank(previousLineNum)
       let after_guard_p = (getline(np) =~# '\v^\s*\|')
       return indent(np) + (after_guard_p ? 0 : &l:shiftwidth)
     endif
@@ -142,8 +163,7 @@ function! GetHaskellIndent()
 endfunction
 
 
-
-
+let b:indentScope = []
 let b:did_indent = 1
 
 " __END__
