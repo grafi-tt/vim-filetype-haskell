@@ -1,6 +1,7 @@
 " Vim indent: haskell
 " Version: @@VERSION@@
-" Copyright (C) 2008-2010 kana <http://whileimautomaton.net/>
+" Copyright (C) 2012 grafi <http://grafi.jp/>
+"               2008-2010 kana <http://whileimautomaton.net/>
 " License: So-called MIT/X license  {{{
 "     Permission is hereby granted, free of charge, to any person obtaining
 "     a copy of this software and associated documentation files (the
@@ -28,12 +29,12 @@
 " * "<*>" indicates the cursor position before automatic indentation.
 
 if exists('b:did_indent')
-  finish
+    finish
 endif
 
 setlocal autoindent
 setlocal indentexpr=GetHaskellIndent()
-setlocal indentkeys=!^F,o,O,=where,0<Bar>
+setlocal indentkeys=!^F,o,O,0=where,0=in,0<Bar>,0<=>
 
 setlocal expandtab
 setlocal softtabstop=2
@@ -50,116 +51,173 @@ let b:undo_indent = 'setlocal '.join([
 
 
 
-
 function! GetHaskellIndent()
-  let thisLineNum = v:lnum
-  let previousLineNum = v:lnum - 1
-  let thisLine = getline(thisLineNum)
-  let previousLine = getline(previousLineNum)
+    let thisLineNum = v:lnum
+    let previousLineNum = v:lnum - 1
+    let thisLine = getline(thisLineNum)
+    let previousLine = getline(previousLineNum)
+
+    " Case: this line is inside a string or comment
+    if synIDattr(synID(thisLineNum, col('.')), 'name') =~ '\(String\|Comment\)$'
+        return -1
+    endif
 
     " NB: thisLine may have trailing characters.  For example: iloveyou<Left><Return>
-  let atNewLine = (col('.') - 1) == matchend(thisLine, '^\s*')
-  if atNewLine
-    " Case: 'class' statement
-    "   class Monad m where<*>
-    "   ##<|>
-    if previousLine =~# '\v^\s*<class>.*<where>'
-      return indent(previousLineNum) + &l:shiftwidth
+    let atNewLine = (col('.') - 1) == matchend(thisLine, '^\s*')
+
+    if atNewLine
+        " Case: previous line is constructed by only comment
+        if synIDattr(synID(previousLineNum, matchend(previousLine, '^\s*')+1), 'name') =~ 'Comment$'
+            return -1
+        endif
+
+        " Case: specially handle the line contains only 'where'
+        "   foo = bar . baz
+        "   ##where<*>
+        "   ####<|>
+        if previousLine =~# '\v^\s*<where>\s*(--.*)?$'
+          return indent(previousLineNum) + &l:shiftwidth
+        endif
+
+        " Case: 'do', 'of', 'let', 'where' and parensises
+        let offset = 0
+
+        let R = '\v(.{-})<(do|of|let|where|\(|\)|\{|\}|\[|\])>(\s*)'
+        let curOffset = 0
+        let curLeftOffset = 0
+        let curMatched = ''
+        let insideComment = 0
+        let tokenList = []
+
+        let xs = matchlist(previousLine, R, curOffset)
+        echo previousLine
+        while insideComment == 0 && xs != []
+            let curLeftOffset = curOffset + len(xs[1])
+            let curOffset += len(xs[0])
+            let curMatched = xs[2]
+            if synIDattr(synID(previousLineNum, curLeftOffset, 1), 'name') =~ 'Comment$'
+                let insideComment = 1
+            elseif synIDattr(synID(previousLineNum, curLeftOffset+1 , 1), 'name') =~ 'String$'
+                let xs = matchlist(previousLine, R, curOffset)
+            else
+                call add(tokenList, [curMatched, curOffset, curLeftOffset])
+                let xs = matchlist(previousLine, R, curOffset)
+            endif
+        endwhile
+
+        let parenDepth = 0
+        let activeTokenListReversed = []
+
+        while tokenList != []
+            let lastToken = remove(tokenList, -1)
+            if lastToken[1] =~# '\v[]})]'
+                let parenDepth = 1
+            endif
+            while parenDepth > 0
+                let lastToken = remove(tokenList, -1)
+                if lastToken[1] =~# '\v[]})]'
+                    let parenDepth += 1
+                elseif lastToken[1] =~# '\v[[{(]'
+                    let parenDepth -= 1
+                endif
+            endwhile
+            call add(activeTokenListReversed, lastToken)
+        endwhile
+        echo activeTokenListReversed
+
+        if activeTokenListReversed == []
+            let offset = 0
+        else
+            let [token, offset, leftOffset] = activeTokenListReversed[0]
+            if (len(activeTokenListReversed) != 1)
+                let [oldToken, oldOffset, oldLeftOffset] = activeTokenListReversed[1]
+            else
+                let [oldToken, oldOffset, oldLeftOffset] = ['', 0, 0]
+            endif
+            if match(previousLine, '\v($|[-{]-)', offset) != -1
+                if token == 'do'
+                    let offset = oldOffset + &l:shiftwidth
+                elseif token == 'when'
+                    let offset = oldOffset + &l:shiftwidth + &l:shiftwidth
+                elseif token == 'let'
+                    let offset = leftOffset + &l:shiftwidth
+                elseif token == 'of'
+                    let leftOffset = matchend(previousLine, '\v^.*case') - 1
+                    let offset = leftOffset + &l:shiftwidth
+                elseif token =~# '\v[[{(]'
+                    let offset = oldOffset + &l:shiftwidth + &l:shiftwidth
+                endif
+            else
+                if token =~# '\v[[{(]'
+                    let offset = offset + &l:shiftwidth
+                endif
+            endif
+        endif
+
+        " Case: Function definition (1)
+        "   f a b =<*>
+        "   ##<|>
+        if previousLine =~# '\v^\s*<\S.*\s+\=\s*(--.*)?$'
+            return indent(previousLineNum) + offset + &l:shiftwidth
+        endif
+
+        " Case: Function definition (2)
+        "   f a b = g a >>=<*>
+        "   ########<|>
+        " TODO the regex for symbols is not sufficient
+        let R = '\v^(.{-}\s+\=\s+)\S.{-}[^A-Za-z0-9_"'')}\]]\s*(--.*)?$'
+        let xs = matchlist(previousLine, R)
+        if xs != []
+            return len(xs[1])
+        endif
+
+        " Otherwise: Keep the previous indentation level.
+        if offset
+            return indent(previousLineNum) + offset
+        else
+            return -1
+        endif
+
+    else
+        " Case: 'where' clause start
+        "   foo = bar . baz
+        "   ##where<*><|>
+        if thisLine =~# '\v^\s*<where>'
+            return indent(prevnonblank(previousLineNum)) + &l:shiftwidth
+        endif
+
+        " Case: Guards (1)
+        "   f a b
+        "   ##|<*><|>
+        if thisLine =~# '\v^\s*\|'
+            let np = prevnonblank(previousLineNum)
+            let after_guard_p = (getline(np) =~# '\v^\s*\|')
+            return indent(np) + (after_guard_p ? 0 : &l:shiftwidth)
+        endif
+
+        " Case: Equal (1)
+        "   f a b
+        "   =<*>####<|>
+        " TODO
+
+        " Case: in
+        "   let a = 1
+        "       b = 2
+        "   <|>####in<*>
+        " TODO
+        " to deal with `let` within do block, consider indent level
+
+        " Case: close comment
+        " {-
+        "   je t'aime
+        "   je vous aime
+        " <|>##-}<*>
+        " TODO
+
+        " Otherwise: Keep the previous indentation level.
+        return -1
+
     endif
-
-    " Case: 'instance' statement
-    "   instance Eq Foo where<*>
-    "   ##<|>
-    if previousLine =~# '\v^\s*<instance>.*<where>'
-      return indent(previousLineNum) + &l:shiftwidth
-    endif
-
-    " Case: 'do' notation (1)
-    "   f a b = do<*>
-    "   ##<|>
-    if previousLine =~# '\v^\s*.{-}<do>\s*(--.*)?$'
-      return indent(previousLineNum) + &l:shiftwidth
-    endif
-
-    " Case: 'do' notation (2)
-    "   f a b = do g a<*>
-    "   ###########<|>
-    let xs = matchlist(previousLine, '\v^(\s*.{-}<do>\s*)\S')
-    if xs != []
-      return len(xs[1])
-    endif
-
-    " Case: open curly bracket not closed on this line
-    let R = '\v^.*\zs\{[^}]*$'
-    let x = match(previousLine, R)
-    if x != -1
-      b:startIndent
-      return x
-    endif
-
-    " Case: open paren not closed on this line
-    let R = '\v^.*\zs\([^)]*$'
-    let x = match(previousLine, R)
-    if x != -1
-      b:startIndent
-      return x
-    endif
-
-    " Case: open square bracket not closed on this line
-    let R = '\v^.*\zs\[[^\]]*$'
-    let x = match(previousLine, R)
-    if x != -1
-      b:startIndent
-      return x
-    endif
-
-    " Case: Function definition (1)
-    "   f a b =<*>
-    "   ##<|>
-    if previousLine =~# '\v^\s*<\S.*\s+\=\s*(--.*)?$'
-      return indent(previousLineNum) + &l:shiftwidth
-    endif
-
-    " Case: Function definition (2)
-    "   f a b = g a >>=<*>
-    "   ########<|>
-    let R = '\v^(.{-}\s+\=\s+)\S.{-}[^A-Za-z0-9_"'')}\]]\s*(--.*)?$'
-    let xs = matchlist(previousLine, R)
-    if xs != []
-      return len(xs[1])
-    endif
-
-    " Case: 'where' clause (2)
-    "   foo = bar . baz
-    "   ##where<*>
-    "   ####<|>
-    if previousLine =~# '\v^\s*<where>\s*(--.*)?$'
-      return indent(previousLineNum) + &l:shiftwidth
-    endif
-
-    " Otherwise: Keep the previous indentation level.
-    return -1
-  else
-    " Case: 'where' clause (1)
-    "   foo = bar . baz
-    "   ##where<*><|>
-    if thisLine =~# '\v^\s*<where>'
-      return indent(prevnonblank(previousLineNum)) + &l:shiftwidth
-    endif
-
-    " Case: Guards (1)
-    "   f a b
-    "   ##|<*><|>
-    if thisLine =~# '\v^\s*\|'
-      let np = prevnonblank(previousLineNum)
-      let after_guard_p = (getline(np) =~# '\v^\s*\|')
-      return indent(np) + (after_guard_p ? 0 : &l:shiftwidth)
-    endif
-
-
-    " Otherwise: Keep the previous indentation level.
-    return -1
-  endif
 endfunction
 
 
