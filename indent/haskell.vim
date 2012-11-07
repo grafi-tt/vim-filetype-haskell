@@ -198,6 +198,11 @@ function! GetHaskellIndent()
             return len(xs[1])
         endif
 
+        " Case: PreviousLine is started with guard
+        if previousLine =~# '\v\s*\|'
+            return 0
+        endif
+
         " Otherwise: Keep the previous indentation level.
         if offset
             return indent(previousLineNum) + offset
