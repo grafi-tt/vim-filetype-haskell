@@ -180,12 +180,13 @@ function! GetHaskellIndent()
 
         " Case: 'do', 'of', 'let', 'where' and parensises
         let offset = GetHaskellOffset(previousLineNum)
+        let defaultIndent = (offset == -1) ? indent(previousLineNum) : offset
 
         " Case: Function definition (1)
         "   f a b =<*>
         "   ##<|>
         if previousLine =~# '\v^\s*<\S.*\s+\=\s*(--.*)?$'
-            return indent(previousLineNum) + offset + &l:shiftwidth
+            return defaultIndent + &l:shiftwidth
         endif
 
         " Case: Function definition (2)
@@ -203,12 +204,8 @@ function! GetHaskellIndent()
             return 0
         endif
 
-        " Otherwise: Keep the previous indentation level.
-        if offset
-            return indent(previousLineNum) + offset
-        else
-            return -1
-        endif
+        " Otherwise: Return calculated offset, or previous indent level
+        return defaultIndent
 
     else
         " Case: 'where' clause start
