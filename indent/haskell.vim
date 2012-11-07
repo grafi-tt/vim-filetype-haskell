@@ -44,7 +44,9 @@ let b:undo_indent = 'setlocal '.join([
 \   'indentkeys<',
 \ ])
 
-function! GetHaskellOffset(previousLineNum)
+let s:maxBack = 50
+
+function! s:GetHaskellOffset(previousLineNum)
     let previousLine = getline(a:previousLineNum)
     let offset = 0
 
@@ -60,9 +62,9 @@ function! GetHaskellOffset(previousLineNum)
         let curLeftOffset = curOffset + len(xs[1])
         let curOffset += len(xs[0])
         let curMatched = xs[2]
-        if synIDattr(synID(a:previousLineNum, curLeftOffset, 1), 'name') =~ 'Comment$'
+        if synIDattr(synID(a:previousLineNum, curLeftOffset, 0), 'name') =~ 'Comment$'
             let insideComment = 1
-        elseif synIDattr(synID(a:previousLineNum, curLeftOffset+1 , 1), 'name') =~ 'String$'
+        elseif synIDattr(synID(a:previousLineNum, curLeftOffset+1, 0), 'name') =~ 'String$'
             let xs = matchlist(previousLine, R, curOffset)
         else
             call add(tokenList, [curMatched, curOffset, curLeftOffset])
@@ -120,6 +122,34 @@ function! GetHaskellOffset(previousLineNum)
     return 0
 endfunction
 
+function! s:GetPreviousLeftIndented(lineNum, indent)
+    let curNum = a:lineNum - 1
+    while (indent(curNum) > a:indent)
+        if (curNum == 0 || curNum == a:lineNum - s:maxBack)
+            break
+        endif
+        let curNum -= 1
+    endwhile
+    return curNum
+endfunction
+
+function! s:GetHaskellBarPos(lineNum, col)
+    let max = s:GetPreviousLeftIndented(a:lineNum, a:col)
+    let curNum = a:lineNum - 1
+    while (curNum >= max)
+        let equalPos = matchend(getline(curNum), '\v^\s*data.{-}\ze\=')
+        if equalPos != -1
+            return equalPos
+        endif
+        let guardPos = matchend(getline(curNum), '\v^.{-}%(\a|\d|\s)\ze\|%(\a|\d|\s)')
+        if guardPos != -1
+            return guardPos
+        endif
+        let curNum -= 1
+    endwhile
+    return -1
+endfunction
+
 function! GetHaskellIndent()
     let thisLineNum = v:lnum
     let previousLineNum = v:lnum - 1
@@ -127,7 +157,7 @@ function! GetHaskellIndent()
     let previousLine = getline(previousLineNum)
 
     " Case: this line is inside a string or comment
-    if synIDattr(synID(thisLineNum, col('.')), 'name') =~ '\(String\|Comment\)$'
+    if synIDattr(synID(thisLineNum, col('.'), 0), 'name', 0) =~ '\(String\|Comment\)$'
         return -1
     endif
 
@@ -136,7 +166,7 @@ function! GetHaskellIndent()
 
     if atNewLine
         " Case: previous line is constructed by only comment
-        if synIDattr(synID(previousLineNum, matchend(previousLine, '^\s*')+1), 'name') =~ 'Comment$'
+        if synIDattr(synID(previousLineNum, matchend(previousLine, '^\s*')+1, 0), 'name') =~ 'Comment$'
             return -1
         endif
 
@@ -183,14 +213,21 @@ function! GetHaskellIndent()
             return indent(prevnonblank(previousLineNum)) + &l:shiftwidth
         endif
 
+        " Case: Type Constructor Bar
+        " Tree a = Leaf a
+        "        | Node (Tree a) (Tree a)
         " Case: Guards (1)
         "   f a b
         "   ##|<*><|>
         if thisLine =~# '\v^\s*\|'
-            let np = prevnonblank(previousLineNum)
-            let after_guard_p = (getline(np) =~# '\v^\s*\|')
-            return indent(np) + (after_guard_p ? 0 : &l:shiftwidth)
+            let barPos = s:GetHaskellBarPos(thisLineNum, indent(thisLineNum))
+            if barPos != -1
+                return barPos
+            else
+                return indent(prevnonblank(previousLineNum)) + &l:shiftwidth + &l:shiftwidth
+            endif
         endif
+
 
         " Case: Equal (1)
         "   f a b
