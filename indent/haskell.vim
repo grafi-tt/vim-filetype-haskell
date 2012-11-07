@@ -106,7 +106,7 @@ function! GetHaskellOffset(previousLineNum)
             elseif token == 'let'
                 return leftOffset + &l:shiftwidth
             elseif token == 'of'
-                let leftOffset = matchend(previousLine, '\v^.*case') - 1
+                let leftOffset = matchend(previousLine, '\v^.*\zecase')
                 return leftOffset + &l:shiftwidth
             elseif token =~# '\v[[{(]'
                 return oldOffset + &l:shiftwidth + &l:shiftwidth
