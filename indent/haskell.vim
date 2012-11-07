@@ -33,9 +33,9 @@ if exists('b:did_indent')
 endif
 
 setlocal autoindent
+setlocal expandtab
 setlocal indentexpr=GetHaskellIndent()
 setlocal indentkeys=!^F,o,O,0=where,0=in,0<Bar>,0<=>
-setlocal expandtab
 
 let b:undo_indent = 'setlocal '.join([
 \   'autoindent<',
