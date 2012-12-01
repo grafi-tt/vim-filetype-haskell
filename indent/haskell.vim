@@ -46,6 +46,8 @@ let b:undo_indent = 'setlocal '.join([
 
 let s:maxBack = 50
 
+" returns offset caused by the previous line
+" if no offset is caused, returns -1
 function! s:GetHaskellOffset(previousLineNum)
     let previousLine = getline(a:previousLineNum)
     let offset = 0
@@ -92,7 +94,7 @@ function! s:GetHaskellOffset(previousLineNum)
     endwhile
 
     if activeTokenListReversed == []
-        return 0
+        return -1
     else
         let [token, offset, leftOffset] = activeTokenListReversed[0]
         if (len(activeTokenListReversed) != 1)
