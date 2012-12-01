@@ -93,9 +93,7 @@ function! s:GetHaskellOffset(previousLineNum)
         call add(activeTokenListReversed, lastToken)
     endwhile
 
-    if activeTokenListReversed == []
-        return -1
-    else
+    if activeTokenListReversed != []
         let [token, offset, leftOffset] = activeTokenListReversed[0]
         if (len(activeTokenListReversed) != 1)
             let [oldToken, oldOffset, oldLeftOffset] = activeTokenListReversed[1]
@@ -121,7 +119,8 @@ function! s:GetHaskellOffset(previousLineNum)
             endif
         endif
     endif
-    return 0
+
+    return -1
 endfunction
 
 function! s:GetPreviousLeftIndented(lineNum, indent)
