@@ -179,7 +179,7 @@ function! GetHaskellIndent()
         endif
 
         " Case: 'do', 'of', 'let', 'where' and parensises
-        let offset = GetHaskellOffset(previousLineNum)
+        let offset = s:GetHaskellOffset(previousLineNum)
         let defaultIndent = (offset == -1) ? indent(previousLineNum) : offset
 
         " Case: Function definition (1)
