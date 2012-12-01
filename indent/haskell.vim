@@ -100,7 +100,7 @@ function! s:GetHaskellOffset(previousLineNum)
         else
             let [oldToken, oldOffset, oldLeftOffset] = ['', 0, 0]
         endif
-        if match(previousLine, '\v($|[-{]-)', offset) != -1
+        if match(previousLine, '\v^($|[-{]-)', offset) != -1
             if token == 'do'
                 return oldOffset + &l:shiftwidth
             elseif token == 'when'
@@ -116,6 +116,8 @@ function! s:GetHaskellOffset(previousLineNum)
         else
             if token =~# '\v[[{(]'
                 return offset + &l:shiftwidth
+            else
+                return offset
             endif
         endif
     endif
@@ -194,7 +196,7 @@ function! GetHaskellIndent()
         "   f a b = g a >>=<*>
         "   ########<|>
         " TODO the regex for symbols is not sufficient
-        let R = '\v^(.{-}\s+\=\s+)\S.{-}[^A-Za-z0-9_"'')}\]]\s*(--.*)?$'
+        let R = '\v^(.{-}\s+\=\s+)\S.{-}[^[:alnum:][:blank:]_"'')}\]]\s*(--.*)?$'
         let xs = matchlist(previousLine, R)
         if xs != []
             return len(xs[1])
