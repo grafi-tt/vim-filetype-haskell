@@ -46,61 +46,70 @@ let b:undo_indent = 'setlocal '.join([
 
 let s:maxBack = 50
 
-" returns offset caused by the previous line
-" if no offset is caused, returns -1
-function! s:GetHaskellOffset(previousLineNum)
+
+" parse tokens for caluculating offset, and push those to reversed list
+function! s:GetHaskellOffsetTokenList(previousLineNum)
     let previousLine = getline(a:previousLineNum)
-    let offset = 0
 
     let R = '\v(.{-})<(do|of|let|where|\(|\)|\{|\}|\[|\])>(\s*)'
     let curOffset = 0
     let curLeftOffset = 0
-    let curMatched = ''
+    let curToken = ''
     let insideComment = 0
-    let tokenList = []
+    let tokenListRaw = []
 
-    let xs = matchlist(previousLine, R, curOffset)
-    while insideComment == 0 && xs != []
-        let curLeftOffset = curOffset + len(xs[1])
-        let curOffset += len(xs[0])
-        let curMatched = xs[2]
+    let matched = matchlist(previousLine, R, curOffset)
+    while insideComment == 0 && matched != []
+        let curLeftOffset = curOffset + len(matched[1])
+        let curOffset += len(matched[0])
+        let curToken = matched[2]
         if synIDattr(synID(a:previousLineNum, curLeftOffset, 0), 'name') =~ 'Comment$'
             let insideComment = 1
         elseif synIDattr(synID(a:previousLineNum, curLeftOffset+1, 0), 'name') =~ 'String$'
-            let xs = matchlist(previousLine, R, curOffset)
+            let matched = matchlist(previousLine, R, curOffset)
         else
-            call add(tokenList, [curMatched, curOffset, curLeftOffset])
-            let xs = matchlist(previousLine, R, curOffset)
+            call add(tokenListRaw, [curToken, curOffset, curLeftOffset])
+            let matched = matchlist(previousLine, R, curOffset)
         endif
     endwhile
 
     let parenDepth = 0
-    let activeTokenListReversed = []
+    let tokenList = []
 
-    while tokenList != []
-        let lastToken = remove(tokenList, -1)
+    while tokenListRaw != []
+        let lastToken = remove(tokenListRaw, -1)
         if lastToken[1] =~# '\v[]})]'
             let parenDepth = 1
         endif
         while parenDepth > 0
-            let lastToken = remove(tokenList, -1)
+            let lastToken = remove(tokenListRaw, -1)
             if lastToken[1] =~# '\v[]})]'
                 let parenDepth += 1
             elseif lastToken[1] =~# '\v[[{(]'
                 let parenDepth -= 1
             endif
         endwhile
-        call add(activeTokenListReversed, lastToken)
+        call add(tokenList, lastToken)
     endwhile
 
-    if activeTokenListReversed != []
-        let [token, offset, leftOffset] = activeTokenListReversed[0]
-        if (len(activeTokenListReversed) != 1)
-            let [oldToken, oldOffset, oldLeftOffset] = activeTokenListReversed[1]
+    return tokenList
+endfunction
+
+" returns offset caused by tokens of previous line
+" if no offset is caused, returns -1
+function! s:GetHaskellOffset(previousLineNum)
+    let previousLine = getline(a:previousLineNum)
+    let xs = s:GetHaskellOffsetTokenList(a:previousLineNum)
+
+    if xs != []
+        let [token, offset, leftOffset] = xs[0]
+        if (len(xs) != 1)
+            let [oldToken, oldOffset, oldLeftOffset] = xs[1]
         else
             let [oldToken, oldOffset, oldLeftOffset] = ['', 0, 0]
         endif
         if match(previousLine, '\v^($|[-{]-)', offset) != -1
+            " previous line does not end by matched token
             if token == 'do'
                 return oldOffset + &l:shiftwidth
             elseif token == 'when'
@@ -114,6 +123,7 @@ function! s:GetHaskellOffset(previousLineNum)
                 return oldOffset + &l:shiftwidth + &l:shiftwidth
             endif
         else
+            " previous line ends by matched token
             if token =~# '\v[[{(]'
                 return offset + &l:shiftwidth
             else
