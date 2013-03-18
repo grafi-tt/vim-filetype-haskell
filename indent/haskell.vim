@@ -112,15 +112,15 @@ function! s:GetHaskellOffset(previousLineNum)
 			" previous line does not end by matched token
 			if token == 'do'
 				return oldOffset + &l:shiftwidth
-			elseif token == 'when'
-				return oldOffset + &l:shiftwidth + &l:shiftwidth
+			elseif token == 'where'
+				return oldOffset + &l:shiftwidth
 			elseif token == 'let'
 				return leftOffset + &l:shiftwidth
 			elseif token == 'of'
 				let leftOffset = matchend(previousLine, '\v^.*\zecase')
 				return leftOffset + &l:shiftwidth
 			elseif token =~# '\v[[{(]'
-				return oldOffset + &l:shiftwidth + &l:shiftwidth
+				return oldOffset + &l:shiftwidth
 			endif
 		else
 			" previous line ends by matched token
