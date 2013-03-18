@@ -109,7 +109,7 @@ function! s:GetHaskellOffset(previousLineNum)
 			let [oldToken, oldOffset, oldLeftOffset] = ['', 0, 0]
 		endif
 		if match(previousLine, '\v^($|[-{]-)', offset) != -1
-			" previous line does not end by matched token
+			" previous line ends by matched token
 			if token == 'do'
 				return oldOffset + &l:shiftwidth
 			elseif token == 'where'
@@ -123,7 +123,7 @@ function! s:GetHaskellOffset(previousLineNum)
 				return oldOffset + &l:shiftwidth
 			endif
 		else
-			" previous line ends by matched token
+			" previous line does not end by matched token
 			if token =~# '\v[[{(]'
 				return offset + &l:shiftwidth
 			else
