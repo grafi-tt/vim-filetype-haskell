@@ -35,7 +35,7 @@ endif
 setlocal autoindent
 setlocal expandtab
 setlocal indentexpr=GetHaskellIndent()
-setlocal indentkeys=!^F,o,O,0=where,0=in,0<Bar>,0<=>
+setlocal indentkeys=!^F,o,O,0=where,0=in,0=deriving,0<Bar>,0<=>
 
 let b:undo_indent = 'setlocal '.join([
 \   'autoindent<',
@@ -163,6 +163,23 @@ function! s:GetHaskellBarPos(lineNum, col)
 	return -1
 endfunction
 
+function! s:GetHaskellDerivingPos(lineNum, col)
+	let max = s:GetPreviousLeftIndented(a:lineNum, a:col)
+	let curNum = a:lineNum - 1
+	while (curNum >= max)
+		let equalPos = matchend(getline(curNum), '\v^\s*%(data|newtype).{-}\ze\=')
+		if equalPos != -1
+			return equalPos
+		endif
+		let orPos = matchend(getline(curNum), '\v^\s*\ze\|')
+		if orPos != -1
+			return orPos
+		endif
+		let curNum -= 1
+	endwhile
+	return -1
+endfunction
+
 function! GetHaskellIndent()
 	let thisLineNum = v:lnum
 	let previousLineNum = v:lnum - 1
@@ -230,7 +247,7 @@ function! GetHaskellIndent()
 
 		" Case: Type Constructor Bar
 		" Tree a = Leaf a
-		"		| Node (Tree a) (Tree a)
+		"        | Node (Tree a) (Tree a)
 		" Case: Guards (1)
 		"   f a b
 		"   ##|<*><|>
@@ -239,10 +256,22 @@ function! GetHaskellIndent()
 			if barPos != -1
 				return barPos
 			else
-				return indent(prevnonblank(previousLineNum)) + &l:shiftwidth + &l:shiftwidth
+				return indent(prevnonblank(previousLineNum)) + &l:shiftwidth
 			endif
 		endif
 
+		" Case: Deriving
+		" Tree a = Leaf a
+		"        | Node (Tree a) (Tree a)
+		"        deriving hoge
+		if thisLine =~# '\v^\s*deriving'
+			let derivingPos = s:GetHaskellDerivingPos(thisLineNum, indent(thisLineNum))
+			if derivingPos != -1
+				return derivingPos
+			else
+				return indent(prevnonblank(previousLineNum)) + &l:shiftwidth
+			endif
+		endif
 
 		" Case: Equal (1)
 		"   f a b
